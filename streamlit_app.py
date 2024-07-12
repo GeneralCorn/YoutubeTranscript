@@ -37,22 +37,41 @@ def get_channel_id_by_name(api_key, channel_name):
     
     return data['items'][0]['id']['channelId']
 
-def get_video_urls(api_key, channel_id):
-    base_url = 'https://www.googleapis.com/youtube/v3'
-    search_url = f'{base_url}/search'
+def get_uploads_playlist_id(api_key, channel_id):
+    url = 'https://www.googleapis.com/youtube/v3/channels'
+    params = {
+        'part': 'contentDetails',
+        'id': channel_id,
+        'key': api_key
+    }
     
-    video_urls = []
-    next_page_token = ''
+    response = requests.get(url, params=params)
+    
+    if response.status_code != 200:
+        print(f'Error: {response.status_code} - {response.text}')
+        return None
+    
+    data = response.json()
+    
+    if 'items' not in data or len(data['items']) == 0:
+        print(f'No details found for channel ID: {channel_id}')
+        return None
+    
+    uploads_playlist_id = data['items'][0]['contentDetails']['relatedPlaylists']['uploads']
+    return uploads_playlist_id
+
+def get_video_links_from_playlist(api_key, playlist_id):
+    video_links = []
+    url = 'https://www.googleapis.com/youtube/v3/playlistItems'
+    params = {
+        'part': 'snippet',
+        'playlistId': playlist_id,
+        'maxResults': 50,
+        'key': api_key
+    }
     
     while True:
-        response = requests.get(search_url, params={
-            'key': api_key,
-            'channelId': channel_id,
-            'part': 'id',
-            'order': 'date',
-            'maxResults': 50,
-            'pageToken': next_page_token
-        })
+        response = requests.get(url, params=params)
         
         if response.status_code != 200:
             print(f'Error: {response.status_code} - {response.text}')
@@ -60,21 +79,16 @@ def get_video_urls(api_key, channel_id):
         
         data = response.json()
         
-        if 'items' not in data:
-            print(f'No items found in response: {data}')
-            break
+        for item in data['items']:
+            video_id = item['snippet']['resourceId']['videoId']
+            video_links.append(f'https://www.youtube.com/watch?v={video_id}')
         
-        for item in data.get('items', []):
-            if item['id']['kind'] == 'youtube#video':
-                video_id = item['id']['videoId']
-                video_urls.append(f'https://www.youtube.com/watch?v={video_id}')
-        
-        next_page_token = data.get('nextPageToken', None)
-        
-        if not next_page_token:
+        if 'nextPageToken' in data:
+            params['pageToken'] = data['nextPageToken']
+        else:
             break
     
-    return video_urls
+    return video_links
 
 def get_video_title_and_views(url):
     try:
@@ -109,7 +123,9 @@ def create_excel_file(channelid):
         current_channel = 0
 
         for key, value in channelid.items():
-            url_list = get_video_urls(API_KEY, value)
+
+            playlist_id = get_uploads_playlist_id(API_KEY, value)
+            url_list = get_video_links_from_playlist(API_KEY, playlist_id)
 
             video_details = {
                 'Views': [],
@@ -146,7 +162,7 @@ def create_excel_file(channelid):
 
 #################### API Setup
 
-default_api_key = ""  # Replace with your default API key
+default_api_key = 'AIzaSyA8JrcWDxjQ6j--UqJh3SxD2gECSmS5pBA'
 API_KEY = st.text_input("Enter your YouTube API Key", value=default_api_key, type="password")
 API_service_name = 'youtube'
 API_version = 'v3'
@@ -190,7 +206,7 @@ channelid = {}
 for u in usernames:
     id = get_channel_id_by_name(API_KEY, u)
     if id is not None:
-        channelid[u] = get_channel_id_by_name(API_KEY, u)
+        channelid[u] = id
     else:
         continue
 
@@ -202,7 +218,6 @@ if st.button("Submit"):
     elif not API_KEY:
         st.error("Please provide your YouTube API key.")
     else:
-        channelid = {f"Channel{i+1}": url for i, url in enumerate(urls)}
         excel_file = create_excel_file(channelid)
 
         st.download_button(
