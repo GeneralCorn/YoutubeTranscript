@@ -8,6 +8,8 @@ from googleapiclient.discovery import build
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
 from googleapiclient.errors import HttpError
 from bs4 import BeautifulSoup
+from config import DEFAULT_API_KEY
+
 # from google.oauth2 import id_token
 # from google.auth.transport import requests
 
@@ -162,8 +164,7 @@ def create_excel_file(channelid):
 
 #################### API Setup
 
-default_api_key = 'AIzaSyA8JrcWDxjQ6j--UqJh3SxD2gECSmS5pBA'
-API_KEY = st.text_input("Enter your YouTube API Key", value=default_api_key, type="password")
+API_KEY = st.text_input("Enter your YouTube API Key", value=DEFAULT_API_KEY, type="password")
 API_service_name = 'youtube'
 API_version = 'v3'
 youtube = build(API_service_name, API_version, developerKey=API_KEY)
