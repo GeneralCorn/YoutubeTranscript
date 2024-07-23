@@ -2,7 +2,8 @@
 import streamlit as st
 import requests
 import pandas as pd
-import os
+import re
+import scrapetube
 import io
 from googleapiclient.discovery import build
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
@@ -10,87 +11,11 @@ from googleapiclient.errors import HttpError
 from bs4 import BeautifulSoup
 from config import DEFAULT_API_KEY
 
+
 # from google.oauth2 import id_token
 # from google.auth.transport import requests
 
 ################### Supporting Functions
-
-def get_channel_id_by_name(api_key, channel_name):
-    url = 'https://www.googleapis.com/youtube/v3/search'
-    params = {
-        'part': 'id',
-        'q': channel_name,
-        'type': 'channel',
-        'key': api_key,
-        'fields': 'items(id(channelId))'
-    }
-
-    response = requests.get(url, params=params)
-    
-    if response.status_code != 200:
-        print(f'Error: {response.status_code} - {response.text}')
-        return None
-    
-    data = response.json()
-    
-    if 'items' not in data or len(data['items']) == 0:
-        print(f'No channel found for name: {channel_name}')
-        return None
-    
-    return data['items'][0]['id']['channelId']
-
-def get_uploads_playlist_id(api_key, channel_id):
-    url = 'https://www.googleapis.com/youtube/v3/channels'
-    params = {
-        'part': 'contentDetails',
-        'id': channel_id,
-        'key': api_key
-    }
-    
-    response = requests.get(url, params=params)
-    
-    if response.status_code != 200:
-        print(f'Error: {response.status_code} - {response.text}')
-        return None
-    
-    data = response.json()
-    
-    if 'items' not in data or len(data['items']) == 0:
-        print(f'No details found for channel ID: {channel_id}')
-        return None
-    
-    uploads_playlist_id = data['items'][0]['contentDetails']['relatedPlaylists']['uploads']
-    return uploads_playlist_id
-
-def get_video_links_from_playlist(api_key, playlist_id):
-    video_links = []
-    url = 'https://www.googleapis.com/youtube/v3/playlistItems'
-    params = {
-        'part': 'snippet',
-        'playlistId': playlist_id,
-        'maxResults': 50,
-        'key': api_key
-    }
-    
-    while True:
-        response = requests.get(url, params=params)
-        
-        if response.status_code != 200:
-            print(f'Error: {response.status_code} - {response.text}')
-            break
-        
-        data = response.json()
-        
-        for item in data['items']:
-            video_id = item['snippet']['resourceId']['videoId']
-            video_links.append(f'https://www.youtube.com/watch?v={video_id}')
-        
-        if 'nextPageToken' in data:
-            params['pageToken'] = data['nextPageToken']
-        else:
-            break
-    
-    return video_links
 
 def get_video_title_and_views(url):
     try:
@@ -115,6 +40,17 @@ def get_video_transcript(video_id):
         print(f"Could not fetch transcript for video {video_id}: {e}")
         return None
     
+def get_channel_id(username):
+    response = requests.get(f"https://www.youtube.com/@{username}/about")
+    
+    if response.status_code == 200:
+        soup = BeautifulSoup(response.text, 'html.parser')
+        match = re.search(r'"externalId":"(UC[\w-]+)"', str(soup))
+        if match:
+            return match.group(1)
+    
+    return None
+    
 ##### Generation Function
 def create_excel_file(channelid):
     output = io.BytesIO()
@@ -125,9 +61,11 @@ def create_excel_file(channelid):
         current_channel = 0
 
         for key, value in channelid.items():
-
-            playlist_id = get_uploads_playlist_id(API_KEY, value)
-            url_list = get_video_links_from_playlist(API_KEY, playlist_id)
+            playlist_id = "UU" + value[2:]
+            urls = []
+            videos = scrapetube.get_playlist(playlist_id)
+            for video in videos:
+                urls.append(f"https://www.youtube.com/watch?v={video['videoId']}")
 
             video_details = {
                 'Views': [],
@@ -136,7 +74,7 @@ def create_excel_file(channelid):
                 'Transcript': []
             }
 
-            for idx, url in enumerate(url_list):
+            for idx, url in enumerate(urls):
                 video_id = url.split('watch?v=')[-1]
                 title, view_count = get_video_title_and_views(url)
                 transcript = get_video_transcript(video_id)
@@ -148,45 +86,48 @@ def create_excel_file(channelid):
                     video_details['Transcript'].append(transcript)
 
                 # Update progress for each video
-                progress = ((current_channel / total_channels) + (idx + 1) / (len(url_list) * total_channels)) / 100
-                my_bar.progress(progress, text=f"Processing Video {idx+1} of {len(url_list)} for {key}.....")
+                progress = ((current_channel / total_channels) + (idx + 1) / (len(urls) * total_channels)) / 100
+                my_bar.progress(progress, text=f"Processing Video {idx+1} of {len(urls)} for {key}.....")
 
             df = pd.DataFrame(video_details)
             df.to_excel(writer, sheet_name=key, index=False)
 
             # Update progress for each channel
             current_channel += 1
-            my_bar.progress((current_channel / total_channels), text=f"Processing Channel {current_channel} of {total_channels}.....")
+            my_bar.progress((current_channel / total_channels), text=f"Processed Channel {current_channel} of {total_channels}.....")
 
     output.seek(0)
-    my_bar.progress(1, text="Operation complete.")
+    my_bar.progress(100, text="Operation complete.")
+    my_bar.empty()
     return output
 
 #################### API Setup
 
-API_KEY = st.text_input("Enter your YouTube API Key", value=DEFAULT_API_KEY, type="password")
-API_service_name = 'youtube'
-API_version = 'v3'
-youtube = build(API_service_name, API_version, developerKey=API_KEY)
+# API_KEY = st.text_input("Enter your YouTube API Key", value=DEFAULT_API_KEY, type="password")
+# API_service_name = 'youtube'
+# API_version = 'v3'
+# youtube = build(API_service_name, API_version, developerKey=API_KEY)
 
 ########## UI Start
 
 st.title("YouTube Transcript Generator")
-st.write("For Heeyo")
-st.write("Note, a channel without an ID or videos without transcripts will be skipped")
+st.markdown("Note, a **channel without an ID** or **videos without transcripts** will be *skipped*")
+st.markdown("Channel Url Format: https://www.youtube.com/@username")
 
-option = st.selectbox(
+option = st.radio(
     "Select input type",
-    ["YouTube Channel URL", "Upload txt file with URLs"],
+    ["Enter YouTube Channel URLs", "Upload TXT file with URLs"],
     index=0,
     key="input_type",
-    help="Choose whether to input a single YouTube channel URL or upload a .txt file with multiple URLs"
+    help="Format: One full URL per line"
 )
 
-if option == "YouTube Channel URL":
-    channel_url = st.text_input("Enter YouTube Channel URL", key="channel_url")
-    urls = [channel_url] if channel_url else []
-elif option == "Upload txt file with URLs":
+urls = []
+
+if option == "Enter YouTube Channel URLs":
+    channel_url = st.text_area("Enter YouTube Channel URLs")
+    urls = channel_url.splitlines()
+elif option == "Upload TXT file with URLs":
     uploaded_file = st.file_uploader("Upload a .txt file with YouTube Channel URLs", type=["txt"], key="file_upload")
     urls = []
     if uploaded_file is not None:
@@ -200,12 +141,12 @@ video_details = {
 }
 
 usernames = []
-for i in urls:
-    usernames.append(i.split('@')[1])
+for url in urls:
+    usernames.append(url.split('@')[1])
 
 channelid = {}
 for u in usernames:
-    id = get_channel_id_by_name(API_KEY, u)
+    id = get_channel_id(u)
     if id is not None:
         channelid[u] = id
     else:
@@ -216,11 +157,8 @@ for u in usernames:
 if st.button("Submit"):
     if not urls:
         st.error("Please provide at least one YouTube channel URL.")
-    elif not API_KEY:
-        st.error("Please provide your YouTube API key.")
     else:
         excel_file = create_excel_file(channelid)
-
         st.download_button(
             label="Download Excel file",
             data=excel_file,
