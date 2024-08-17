@@ -3,5 +3,6 @@ requests
 pandas
 google-api-python-client
 youtube-transcript-api
+xlsxwriter
 beautifulsoup4
 scrapetube
