@@ -51,7 +51,7 @@ def get_channel_id(username):
     return None
     
 ##### Generation Function
-def create_excel_file(channelid):
+def create_excel_file(channelid, is_playlist):
     output = io.BytesIO()
 
     my_bar = st.progress(0, text='Processing YouTube Channels.....')
@@ -60,7 +60,10 @@ def create_excel_file(channelid):
         current_channel = 0
 
         for key, value in channelid.items():
-            playlist_id = "UU" + value[2:]
+            if is_playlist:
+                playlist_id = value
+            else: 
+                playlist_id = "UU" + value[2:]
             urls = []
             videos = scrapetube.get_playlist(playlist_id)
             for video in videos:
@@ -122,10 +125,13 @@ option = st.radio(
 )
 
 urls = []
-
+is_playlist = False
 if option == "Enter YouTube Channel URLs":
-    channel_url = st.text_area("Enter YouTube Channel URLs or Playlists")
+    channel_url = st.text_area("Enter YouTube Channel URLs or Playlists (一次只用一种)")
     urls = channel_url.splitlines()
+    if len(urls) >= 1:
+        if 'playlist' in urls[0]:
+            is_playlist = True
 elif option == "Upload TXT file with URLs":
     uploaded_file = st.file_uploader("Upload a .txt file with YouTube Channel URLs", type=["txt"], key="file_upload")
     urls = []
@@ -140,11 +146,15 @@ video_details = {
 }
 
 channelid = {}
-for url in urls:
-    if "@" in url:
-        channelid[url.split('@')[1]] = get_channel_id(url.split('@')[1])
-    else:
-        channelid[url.split('channel/')[1]] = url.split('channel/')[1]
+if is_playlist:
+    for idx, url in enumerate(urls):
+        channelid[idx] = url.split('playlist?list=')[-1]
+else:
+    for url in urls:
+        if "@" in url:
+            channelid[url.split('@')[1]] = get_channel_id(url.split('@')[1])
+        else:
+            channelid[url.split('channel/')[1]] = url.split('channel/')[1]
 
 #################### MAIN
 
@@ -152,7 +162,7 @@ if st.button("Submit"):
     if not urls:
         st.error("Please provide at least one YouTube channel URL.")
     else:
-        excel_file = create_excel_file(channelid)
+        excel_file = create_excel_file(channelid, is_playlist)
         st.download_button(
             label="Download Excel file",
             data=excel_file,
