@@ -148,7 +148,7 @@ video_details = {
 channelid = {}
 if is_playlist:
     for idx, url in enumerate(urls):
-        channelid[idx] = url.split('playlist?list=')[-1]
+        channelid[f"{idx}"] = url.split('playlist?list=')[-1]
 else:
     for url in urls:
         if "@" in url:
