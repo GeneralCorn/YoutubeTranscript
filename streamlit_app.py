@@ -37,7 +37,6 @@ def get_video_transcript(video_id):
         transcript_text = " | ".join([entry['text'] for entry in transcript])
         return transcript_text
     except Exception as e:
-        print(f"Could not fetch transcript for video {video_id}: {e}")
         return None
     
 def get_channel_id(username):
