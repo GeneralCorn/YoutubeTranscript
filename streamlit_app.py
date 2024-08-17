@@ -112,7 +112,7 @@ def create_excel_file(channelid):
 
 st.title("YouTube Transcript Generator")
 st.markdown("Note, a **channel without an ID** or **videos without transcripts** will be *skipped*")
-st.markdown("Channel Url Format: https://www.youtube.com/@username")
+st.markdown("Channel Url Format: https://www.youtube.com/@username or https://www.youtube.com/{id}")
 
 option = st.radio(
     "Select input type",
@@ -125,7 +125,7 @@ option = st.radio(
 urls = []
 
 if option == "Enter YouTube Channel URLs":
-    channel_url = st.text_area("Enter YouTube Channel URLs")
+    channel_url = st.text_area("Enter YouTube Channel URLs or Playlists")
     urls = channel_url.splitlines()
 elif option == "Upload TXT file with URLs":
     uploaded_file = st.file_uploader("Upload a .txt file with YouTube Channel URLs", type=["txt"], key="file_upload")
@@ -140,17 +140,12 @@ video_details = {
         'Transcript': []
 }
 
-usernames = []
-for url in urls:
-    usernames.append(url.split('@')[1])
-
 channelid = {}
-for u in usernames:
-    id = get_channel_id(u)
-    if id is not None:
-        channelid[u] = id
+for url in urls:
+    if "@" in url:
+        channelid[url.split('@')[1]] = get_channel_id(url.split('@')[1])
     else:
-        continue
+        channelid[url.split('channel/')[1]] = url.split('channel/')[1]
 
 #################### MAIN
 
